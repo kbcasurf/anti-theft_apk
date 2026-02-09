@@ -1,0 +1,78 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# Dependency directories
+node_modules/
+
+# Environment variables
+.env
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS specific
+.DS_Store
+
+# AI related
+.mcp/
+.mcp.json
+.taskmaster/
+.claude/
+.cursor/
+
+# Documentation
+docs/
+
+# TLS / crypto — NEVER commit private keys
+*.pem
+*.key
+*.p12
+*.cer
+*.pfx
+
+# Environment variants
+.env.*
+
+# Android — build artifacts & local config
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+*.hprof
+.gradle/
+build/
+build-output/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Android — signing keys
+*.jks
+*.keystore
+signing.properties
+key.properties
+google-services.json
+
+# Editor / IDE extras
+*.iml
+
+# OS
+Thumbs.db
+
+# Server runtime data
+server/data/
+
+# AI — per-project config (uncomment if not useful for contributors)
+#CLAUDE.md

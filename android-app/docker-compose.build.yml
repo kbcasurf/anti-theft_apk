@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  android-build:
+    build:
+      context: .
+      dockerfile: Dockerfile.build
+    container_name: anti-theft-apk-builder
+    volumes:
+      # Mount output directory to get the built APK
+      - ./build-output:/output
+    environment:
+      - GRADLE_OPTS=-Dorg.gradle.daemon=false -Dorg.gradle.parallel=true
+    command: sh -c "cp /output/anti-theft-debug.apk /output/ && echo 'APK copied to ./build-output/anti-theft-debug.apk'"

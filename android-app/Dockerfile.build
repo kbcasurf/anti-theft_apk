@@ -1,0 +1,59 @@
+# Dockerfile for building Android APK
+# Multi-stage build for optimized final image
+FROM eclipse-temurin:25-jdk-noble AS builder
+
+# Add metadata labels
+LABEL maintainer="Anti-Theft APK Build"
+LABEL description="Docker image for building Anti-Theft Android APK"
+LABEL version="1.0.0"
+
+# Install dependencies
+RUN apt-get update && apt-get install -y \
+    wget \
+    unzip \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set up Android SDK
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV ANDROID_HOME=$ANDROID_SDK_ROOT
+ENV PATH=$PATH:$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools
+
+# Download and install Android command-line tools
+RUN mkdir -p $ANDROID_SDK_ROOT/cmdline-tools && \
+    wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip && \
+    unzip -q commandlinetools-linux-11076708_latest.zip -d $ANDROID_SDK_ROOT/cmdline-tools && \
+    mv $ANDROID_SDK_ROOT/cmdline-tools/cmdline-tools $ANDROID_SDK_ROOT/cmdline-tools/latest && \
+    rm commandlinetools-linux-11076708_latest.zip
+
+# Accept licenses and install required SDK components
+RUN yes | sdkmanager --licenses && \
+    sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+# Set working directory
+WORKDIR /app
+
+# Copy gradle wrapper files first (for caching)
+COPY gradle/ gradle/
+COPY gradlew gradlew.bat ./
+RUN chmod +x gradlew
+
+# Copy gradle build files (for dependency caching)
+COPY build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY app/build.gradle.kts app/proguard-rules.pro app/
+
+# Download dependencies (this layer will be cached)
+RUN ./gradlew dependencies --no-daemon || true
+
+# Copy remaining source code
+COPY app/src app/src
+
+# Build the APK
+RUN ./gradlew assembleDebug --no-daemon --stacktrace
+
+# Create output stage to copy APK
+FROM alpine:latest AS output
+WORKDIR /output
+COPY --from=builder /app/app/build/outputs/apk/debug/app-debug.apk ./anti-theft-debug.apk
+
+# Default command shows APK location
+CMD ["sh", "-c", "echo 'APK built successfully at: /output/anti-theft-debug.apk' && ls -lh /output/"]
