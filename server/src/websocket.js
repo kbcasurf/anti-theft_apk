@@ -122,6 +122,11 @@ function handleMessage(ws, message, clientIP) {
             handleCommand(ws, message);
             break;
 
+        case 'command_ack':
+            console.log(`[WebSocket] Device acknowledged command: ${message.action} (service: ${message.service || 'all'}, success: ${message.success})`);
+            forwardToWebClients(message);
+            break;
+
         default:
             console.warn(`[WebSocket] Unknown message type: ${type}`);
     }
@@ -214,20 +219,23 @@ function handleCommand(ws, message) {
     // Forward command to device
     try {
         const commandAction = message.action || message.command || 'unknown';
+        const commandService = message.service || 'all';
         const messageToSend = JSON.stringify(message);
 
-        console.log(`[WebSocket] 📤 Forwarding command '${commandAction}' to device`);
+        console.log(`[WebSocket] 📤 Forwarding command '${commandAction}' (service: ${commandService}) to device`);
         console.log(`[WebSocket] Message being sent: ${messageToSend}`);
 
         config.state.connectedDevice.send(messageToSend);
-        console.log(`[WebSocket] ✓ Command '${commandAction}' successfully forwarded to device`);
+        console.log(`[WebSocket] ✓ Command '${commandAction}' (service: ${commandService}) successfully forwarded to device`);
 
         // Send confirmation back to web client
-        ws.send(JSON.stringify({
+        const confirmation = {
             type: 'command_sent',
             action: commandAction,
             timestamp: Date.now()
-        }));
+        };
+        if (message.service) confirmation.service = message.service;
+        ws.send(JSON.stringify(confirmation));
         console.log('[WebSocket] ✓ Confirmation sent to web client');
     } catch (error) {
         console.error('[WebSocket] ❌ Failed to forward command:', error.message);

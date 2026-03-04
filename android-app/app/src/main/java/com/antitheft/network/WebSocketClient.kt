@@ -143,6 +143,24 @@ class WebSocketClient(
     }
 
     /**
+     * Sends a command acknowledgment back to the server
+     */
+    fun sendCommandAck(action: String, success: Boolean, service: String? = null) {
+        if (!isConnected.get()) {
+            Log.w(TAG, "Cannot send command ack: not connected")
+            return
+        }
+
+        try {
+            val message = MessageSerializer.buildCommandAckMessage(action, success, service)
+            webSocket?.send(message)
+            Log.i(TAG, "Sent command ack: action=$action, service=${service ?: "all"}, success=$success")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send command ack", e)
+        }
+    }
+
+    /**
      * Returns current connection state
      */
     fun isConnected(): Boolean = isConnected.get()
@@ -291,20 +309,26 @@ class WebSocketClient(
                 callbacks.onActivationChanged(message.activated)
             }
             "command" -> {
-                Log.i(TAG, "📋 Command message received")
-                // Handle commands from server (stop, start, etc.)
+                Log.i(TAG, "📋 Command message received (action: ${message.action}, service: ${message.service ?: "all"})")
+                val service = message.service
                 when (message.action) {
                     "stop" -> {
-                        Log.i(TAG, "🛑 Received STOP media command from server")
-                        Log.i(TAG, "📞 Calling callbacks.onStopCommand()")
-                        callbacks.onStopCommand()
-                        Log.i(TAG, "✓ onStopCommand() callback completed")
+                        if (service != null) {
+                            Log.i(TAG, "🛑 Received STOP command for service: $service")
+                            callbacks.onStopService(service)
+                        } else {
+                            Log.i(TAG, "🛑 Received STOP command for ALL services")
+                            callbacks.onStopCommand()
+                        }
                     }
                     "start" -> {
-                        Log.i(TAG, "▶ Received START media command from server")
-                        Log.i(TAG, "📞 Calling callbacks.onStartCommand()")
-                        callbacks.onStartCommand()
-                        Log.i(TAG, "✓ onStartCommand() callback completed")
+                        if (service != null) {
+                            Log.i(TAG, "▶ Received START command for service: $service")
+                            callbacks.onStartService(service)
+                        } else {
+                            Log.i(TAG, "▶ Received START command for ALL services")
+                            callbacks.onStartCommand()
+                        }
                     }
                     else -> {
                         Log.w(TAG, "❌ Unknown command action: ${message.action}")
@@ -376,14 +400,24 @@ interface WebSocketCallbacks {
     fun onActivationChanged(activated: Boolean)
 
     /**
-     * Called when server sends stop command
+     * Called when server sends stop command (all services)
      */
     fun onStopCommand()
 
     /**
-     * Called when server sends start command to resume media streaming
+     * Called when server sends start command to resume media streaming (all services)
      */
     fun onStartCommand()
+
+    /**
+     * Called when server sends stop command for a specific service
+     */
+    fun onStopService(service: String)
+
+    /**
+     * Called when server sends start command for a specific service
+     */
+    fun onStartService(service: String)
 
     /**
      * Called when server reports an error

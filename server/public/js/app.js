@@ -127,6 +127,9 @@ function handleWebSocketMessage(event) {
             case 'activation_changed':
                 handleActivationChanged(message);
                 break;
+            case 'command_ack':
+                handleCommandAck(message);
+                break;
             case 'connected':
                 logToConsole('Server acknowledged connection', 'info');
                 break;
@@ -180,6 +183,17 @@ function handleDeviceDisconnected(message) {
     logToConsole('Device disconnected', 'warning');
     app.deviceConnected = false;
     updateDeviceStatus('disconnected');
+}
+
+/**
+ * Handle command acknowledgment from device
+ */
+function handleCommandAck(message) {
+    const status = message.success ? 'successfully' : 'with failure';
+    const serviceLabel = message.service
+        ? message.service.charAt(0).toUpperCase() + message.service.slice(1)
+        : 'All services';
+    logToConsole(`Device confirmed: ${serviceLabel} ${message.action} executed ${status}`, message.success ? 'info' : 'error');
 }
 
 /**
