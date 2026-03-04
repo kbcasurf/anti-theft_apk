@@ -1,15 +1,27 @@
 /**
  * Anti-Theft Dashboard - Controls Module
- * Handles activation/deactivation buttons and status management
+ * Handles activation/deactivation buttons and per-service stop/start controls
  */
 
 const controlsModule = {
     activateBtn: null,
     deactivateBtn: null,
-    stopServicesBtn: null,
     refreshBtn: null,
     isProcessing: false,
-    servicesStopped: false
+
+    // Per-service toggle state and button references
+    services: {
+        location: { stopped: false, btn: null },
+        audio:    { stopped: false, btn: null },
+        camera:   { stopped: false, btn: null }
+    }
+};
+
+// Service display config (icon + label)
+const SERVICE_DISPLAY = {
+    location: { icon: '📍', label: 'Location' },
+    audio:    { icon: '🎤', label: 'Audio' },
+    camera:   { icon: '📷', label: 'Camera' }
 };
 
 /**
@@ -18,16 +30,138 @@ const controlsModule = {
 function initControls() {
     controlsModule.activateBtn = document.getElementById('btn-activate');
     controlsModule.deactivateBtn = document.getElementById('btn-deactivate');
-    controlsModule.stopServicesBtn = document.getElementById('btn-stop-services');
     controlsModule.refreshBtn = document.getElementById('btn-refresh');
+
+    // Per-service buttons
+    controlsModule.services.location.btn = document.getElementById('btn-stop-location');
+    controlsModule.services.audio.btn = document.getElementById('btn-stop-audio');
+    controlsModule.services.camera.btn = document.getElementById('btn-stop-camera');
 
     // Add event listeners
     controlsModule.activateBtn.addEventListener('click', handleActivate);
     controlsModule.deactivateBtn.addEventListener('click', handleDeactivate);
-    controlsModule.stopServicesBtn.addEventListener('click', handleStopServices);
     controlsModule.refreshBtn.addEventListener('click', handleRefresh);
 
+    // Per-service toggle listeners
+    for (const serviceName of Object.keys(controlsModule.services)) {
+        controlsModule.services[serviceName].btn.addEventListener('click', () => {
+            handleServiceToggle(serviceName);
+        });
+    }
+
     logToConsole('Controls initialized', 'info');
+}
+
+/**
+ * Toggles a single service (stop or start)
+ */
+async function handleServiceToggle(serviceName) {
+    if (controlsModule.isProcessing) return;
+
+    const service = controlsModule.services[serviceName];
+    const display = SERVICE_DISPLAY[serviceName];
+
+    // If currently stopped, resume it
+    if (service.stopped) {
+        return resumeService(serviceName);
+    }
+
+    // Confirmation before stopping
+    if (!confirm(`Stop ${display.label.toLowerCase()} transmission?`)) return;
+
+    try {
+        controlsModule.isProcessing = true;
+        service.btn.disabled = true;
+        service.btn.textContent = '⏳ Stopping...';
+
+        logToConsole(`Sending stop command for ${display.label}...`, 'info');
+
+        if (app.ws && app.ws.readyState === WebSocket.OPEN) {
+            app.ws.send(JSON.stringify({
+                type: 'command',
+                action: 'stop',
+                service: serviceName,
+                timestamp: Date.now()
+            }));
+
+            logToConsole(`✓ Stop ${display.label} command sent`, 'info');
+            service.stopped = true;
+
+            // Stop local playback for the specific service
+            if (serviceName === 'camera' && typeof stopVideo === 'function') stopVideo();
+            if (serviceName === 'audio' && typeof stopAudio === 'function') stopAudio();
+        } else {
+            logToConsole('✗ WebSocket not connected — cannot send command', 'error');
+        }
+
+    } catch (error) {
+        logToConsole(`✗ Stop ${display.label} error: ${error.message}`, 'error');
+    } finally {
+        controlsModule.isProcessing = false;
+        service.btn.disabled = false;
+        updateServiceButton(serviceName);
+    }
+}
+
+/**
+ * Resumes a previously stopped service
+ */
+async function resumeService(serviceName) {
+    const service = controlsModule.services[serviceName];
+    const display = SERVICE_DISPLAY[serviceName];
+
+    try {
+        controlsModule.isProcessing = true;
+        service.btn.disabled = true;
+        service.btn.textContent = '⏳ Resuming...';
+
+        logToConsole(`Sending start command for ${display.label}...`, 'info');
+
+        if (app.ws && app.ws.readyState === WebSocket.OPEN) {
+            app.ws.send(JSON.stringify({
+                type: 'command',
+                action: 'start',
+                service: serviceName,
+                timestamp: Date.now()
+            }));
+
+            logToConsole(`✓ Start ${display.label} command sent`, 'info');
+            service.stopped = false;
+        } else {
+            logToConsole('✗ WebSocket not connected — cannot send command', 'error');
+        }
+
+    } catch (error) {
+        logToConsole(`✗ Resume ${display.label} error: ${error.message}`, 'error');
+    } finally {
+        controlsModule.isProcessing = false;
+        service.btn.disabled = false;
+        updateServiceButton(serviceName);
+    }
+}
+
+/**
+ * Updates a service button's text/icon based on current state
+ */
+function updateServiceButton(serviceName) {
+    const service = controlsModule.services[serviceName];
+    const display = SERVICE_DISPLAY[serviceName];
+
+    if (service.stopped) {
+        service.btn.textContent = `▶️ Start ${display.label}`;
+    } else {
+        service.btn.textContent = `${display.icon} Stop ${display.label}`;
+    }
+}
+
+/**
+ * Resets all service toggle states (used on deactivation)
+ */
+function resetServiceStates() {
+    for (const serviceName of Object.keys(controlsModule.services)) {
+        controlsModule.services[serviceName].stopped = false;
+        updateServiceButton(serviceName);
+    }
 }
 
 /**
@@ -108,9 +242,8 @@ async function handleDeactivate() {
             logToConsole('Tracking deactivated successfully', 'info');
             updateTrackingStatus(false);
 
-            // Reset stop/resume toggle state
-            controlsModule.servicesStopped = false;
-            controlsModule.stopServicesBtn.textContent = '⏸️ Stop Services';
+            // Reset all per-service toggle states
+            resetServiceStates();
 
             // Stop media streams
             stopVideo();
@@ -125,99 +258,6 @@ async function handleDeactivate() {
         controlsModule.isProcessing = false;
         controlsModule.deactivateBtn.disabled = false;
         controlsModule.deactivateBtn.textContent = '⏹️ Deactivate Tracking';
-    }
-}
-
-/**
- * Handle stop/resume services button click
- * Toggles between stopping and resuming location, video, and audio transmission
- */
-async function handleStopServices() {
-    if (controlsModule.isProcessing) {
-        return;
-    }
-
-    // If services are stopped, resume them
-    if (controlsModule.servicesStopped) {
-        return handleResumeServices();
-    }
-
-    // Confirmation dialog for stopping
-    if (!confirm('Stop location, video, and audio transmission?')) {
-        return;
-    }
-
-    try {
-        controlsModule.isProcessing = true;
-        controlsModule.stopServicesBtn.disabled = true;
-        controlsModule.stopServicesBtn.textContent = '⏳ Stopping...';
-
-        logToConsole('Sending stop command to device...', 'info');
-
-        // Send command via WebSocket
-        if (typeof app !== 'undefined' && app.ws && app.ws.readyState === WebSocket.OPEN) {
-            app.ws.send(JSON.stringify({
-                type: 'command',
-                action: 'stop',
-                timestamp: Date.now()
-            }));
-
-            logToConsole('✓ Stop command sent to device', 'success');
-            controlsModule.servicesStopped = true;
-
-            // Stop local media playback
-            if (typeof stopVideo === 'function') stopVideo();
-            if (typeof stopAudio === 'function') stopAudio();
-
-        } else {
-            logToConsole('✗ WebSocket not connected - cannot send command', 'error');
-        }
-
-    } catch (error) {
-        logToConsole(`✗ Stop services error: ${error.message}`, 'error');
-    } finally {
-        controlsModule.isProcessing = false;
-        controlsModule.stopServicesBtn.disabled = false;
-        controlsModule.stopServicesBtn.textContent = controlsModule.servicesStopped
-            ? '▶️ Resume Services'
-            : '⏸️ Stop Services';
-    }
-}
-
-/**
- * Resumes media streaming after a stop
- */
-async function handleResumeServices() {
-    try {
-        controlsModule.isProcessing = true;
-        controlsModule.stopServicesBtn.disabled = true;
-        controlsModule.stopServicesBtn.textContent = '⏳ Resuming...';
-
-        logToConsole('Sending start command to device...', 'info');
-
-        // Send command via WebSocket
-        if (typeof app !== 'undefined' && app.ws && app.ws.readyState === WebSocket.OPEN) {
-            app.ws.send(JSON.stringify({
-                type: 'command',
-                action: 'start',
-                timestamp: Date.now()
-            }));
-
-            logToConsole('✓ Start command sent to device', 'success');
-            controlsModule.servicesStopped = false;
-
-        } else {
-            logToConsole('✗ WebSocket not connected - cannot send command', 'error');
-        }
-
-    } catch (error) {
-        logToConsole(`✗ Resume services error: ${error.message}`, 'error');
-    } finally {
-        controlsModule.isProcessing = false;
-        controlsModule.stopServicesBtn.disabled = false;
-        controlsModule.stopServicesBtn.textContent = controlsModule.servicesStopped
-            ? '▶️ Resume Services'
-            : '⏸️ Stop Services';
     }
 }
 
@@ -272,8 +312,11 @@ async function handleRefresh() {
 function setControlsEnabled(enabled) {
     controlsModule.activateBtn.disabled = !enabled;
     controlsModule.deactivateBtn.disabled = !enabled;
-    controlsModule.stopServicesBtn.disabled = !enabled;
     controlsModule.refreshBtn.disabled = !enabled;
+
+    for (const serviceName of Object.keys(controlsModule.services)) {
+        controlsModule.services[serviceName].btn.disabled = !enabled;
+    }
 
     if (!enabled) {
         logToConsole('Controls disabled: No server connection', 'warning');

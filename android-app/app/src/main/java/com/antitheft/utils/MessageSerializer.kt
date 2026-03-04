@@ -18,6 +18,7 @@ object MessageSerializer {
         const val LOCATION = "location"
         const val VIDEO_FRAME = "video_frame"
         const val AUDIO_CHUNK = "audio_chunk"
+        const val COMMAND_ACK = "command_ack"
     }
 
     /**
@@ -95,6 +96,16 @@ object MessageSerializer {
         }.toString()
     }
 
+    fun buildCommandAckMessage(action: String, success: Boolean, service: String? = null): String {
+        return JSONObject().apply {
+            put("type", MessageType.COMMAND_ACK)
+            put("action", action)
+            put("success", success)
+            if (service != null) put("service", service)
+            put("timestamp", System.currentTimeMillis())
+        }.toString()
+    }
+
     /**
      * Parses a server command message
      * @param message JSON string from server
@@ -111,6 +122,7 @@ object MessageSerializer {
                 message = json.optString("message", ""),
                 activated = json.optBoolean("activated", false),
                 action = json.optString("action", ""),
+                service = if (json.has("service") && !json.isNull("service")) json.optString("service", "") else null,
                 data = data
             )
         } catch (e: Exception) {
@@ -119,6 +131,7 @@ object MessageSerializer {
                 message = "Failed to parse server message: ${e.message}",
                 activated = false,
                 action = "",
+                service = null,
                 data = null
             )
         }
@@ -133,5 +146,6 @@ data class ServerMessage(
     val message: String,
     val activated: Boolean,
     val action: String = "",
+    val service: String? = null,
     val data: JSONObject?
 )
